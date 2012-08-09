@@ -19,13 +19,15 @@ class DebugToolbar(object):
         base_url = self.request.META.get('SCRIPT_NAME', '')
         self.config = {
             'INTERCEPT_REDIRECTS': True,
-            'MEDIA_URL': u'%s/__debug__/m/' % base_url
+            'MEDIA_URL': u'%s/__debug__/m/' % base_url,
+            'DEBUG_TOOLBAR_DEV': False,
         }
         # Check if settings has a DEBUG_TOOLBAR_CONFIG and updated config
         self.config.update(getattr(settings, 'DEBUG_TOOLBAR_CONFIG', {}))
         self.template_context = {
             'BASE_URL': base_url,  # for backwards compatibility
             'DEBUG_TOOLBAR_MEDIA_URL': self.config.get('MEDIA_URL'),
+            'DEBUG_TOOLBAR_DEV': self.config.get('DEBUG_TOOLBAR_DEV', False),
         }
 
         self.load_panels()
@@ -58,11 +60,21 @@ class DebugToolbar(object):
         media_path = os.path.join(os.path.dirname(__file__), os.pardir, 'media', 'debug_toolbar')
 
         context = self.template_context.copy()
-        context.update({
-            'panels': self.panels,
-            'js': mark_safe(open(os.path.join(media_path, 'js', 'toolbar.min.js'), 'r').read()),
-            'css': mark_safe(open(os.path.join(media_path, 'css', 'toolbar.min.css'), 'r').read()),
-        })
+        min = self.config.get('DEBUG_TOOLBAR_DEV', False) and '' or '.min'
+        load_media = lambda file: mark_safe(open(os.path.join(media_path, file % min), 'r').read())
+
+        media = {
+                'js':  ['js/toolbar%s.js'],
+                'css': ['css/toolbar%s.css'],
+            }
+
+        if self.config.get('DEBUG_TOOLBAR_JQUERY', False):
+            media['js'].extend(['js/jquery%s.js', 'js/jquery.cookie%s.js'])
+
+        for type in media.keys():
+            media[type] = mark_safe("\n\n".join([load_media(f) for f in media[type]]))
+
+        context.update(media, panels=self.panels)
 
         return render_to_string('debug_toolbar/base.html', context)
 
